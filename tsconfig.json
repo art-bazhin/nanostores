@@ -6,6 +6,7 @@
     "noEmit": true,
     "noImplicitOverride": true,
     "noUncheckedIndexedAccess": true,
+    "rewriteRelativeImportExtensions": true,
     "skipLibCheck": true,
     "strict": true,
     "target": "es2024",
