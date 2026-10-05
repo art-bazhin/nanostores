@@ -35,14 +35,15 @@
     "dev": "pnpm run --parallel \"/^dev:/\"",
     "dev:build": "tsc -p tsconfig.build.json --watch --preserveWatchOutput",
     "dev:test": "node --import tsx --test --watch \"src/**/*.test.ts\"",
-    "build": "tsc -p tsconfig.build.json",
+    "build": "tsc -p tsconfig.build.json && node scripts/mangle.mjs",
     "test:lint": "oxlint",
     "test:unit": "pnpm bnt \"src/**/*.test.ts\"",
+    "test:dist": "node --import tsx --import ./test/register-build-loader.mjs --test \"src/**/*.test.ts\"",
     "test:legacy": "node test/legacy/index.mjs",
     "test:types": "check-dts",
     "test:size": "pnpm build && size-limit",
     "test:synced": "node test/size-synced.ts",
-    "test": "pnpm build && pnpm test:unit && pnpm test:legacy && pnpm test:lint"
+    "test": "pnpm build && pnpm test:unit && pnpm test:dist && pnpm test:legacy && pnpm test:lint"
   },
   "devDependencies": {
     "@logux/oxc-configs": "^1.2.0",
@@ -54,6 +55,7 @@
     "benchmark": "^2.1.4",
     "better-node-test": "^0.8.4",
     "check-dts": "^2.0.1",
+    "esbuild": "^0.28.2",
     "eslint-plugin-prefer-let": "^4.2.2",
     "oxlint": "^1.85.0",
     "oxlint-tsgolint": "^7.0.2002",

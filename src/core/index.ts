@@ -6,10 +6,10 @@ const IS_COMPUTING = -1;
 const HAS_EXCEPTION = -2;
 
 /** @internal */
-export const ON_ACTIVATE_KEY = 1;
+export const ON_ACTIVATE_KEY = /* @__KEY__ */ '_onActivate';
 /** @internal */
-export const ON_DEACTIVATE_KEY = 2;
-const ON_UPDATE_KEY = 3;
+export const ON_DEACTIVATE_KEY = /* @__KEY__ */ '_onDeactivate';
+const ON_UPDATE_KEY = /* @__KEY__ */ '_onUpdate';
 
 let globalVersion = 1;
 let notificationVersion = 1;
@@ -48,13 +48,19 @@ export function configure(configUpdate?: Partial<Config>) {
 }
 
 interface Link {
-  source: Store<any> | null;
-  target: Store<any> | Subscriber<any>;
-  cache: any;
+  /** Source store */
+  _source: Store<any> | null;
+  /** Dependent store or subscriber */
+  _target: Store<any> | Subscriber<any>;
+  /** Cached value or previous computing store */
+  _cache: any;
 
-  ns: Link | null;
-  pt: Link | null;
-  nt: Link | null;
+  /** Next source link or last subscriber update version */
+  _nextSource: Link | null;
+  /** Previous target link */
+  _previousTarget: Link | null;
+  /** Next target link */
+  _nextTarget: Link | null;
 }
 
 function createLink(
@@ -62,32 +68,32 @@ function createLink(
   target: Store<any> | Subscriber<any>
 ): Link {
   return {
-    source,
-    target,
-    cache: null,
-    ns: null,
-    pt: null,
-    nt: null,
+    _source: source,
+    _target: target,
+    _cache: null,
+    _nextSource: null,
+    _previousTarget: null,
+    _nextTarget: null,
   };
 }
 
 function addTarget(store: Store<any>, link: Link) {
   let lt = store._lastTarget;
 
-  link.pt = lt;
+  link._previousTarget = lt;
   store._lastTarget = link;
 
   if (lt) {
-    lt.nt = link;
+    lt._nextTarget = link;
     return;
   }
 
   for (
     let link: Link | null = store._firstSource;
     link !== null;
-    link = link.ns
+    link = link._nextSource
   ) {
-    addTarget(link.source!, link);
+    addTarget(link._source!, link);
   }
 
   store._hooks?.[ON_ACTIVATE_KEY]?.(store._value);
@@ -98,12 +104,12 @@ function removeTarget(
   link: Link,
   deactivateImmediately?: boolean
 ) {
-  if (store._lastTarget === link) store._lastTarget = link.pt;
-  if (link.pt) link.pt.nt = link.nt;
-  if (link.nt) link.nt.pt = link.pt;
+  if (store._lastTarget === link) store._lastTarget = link._previousTarget;
+  if (link._previousTarget) link._previousTarget._nextTarget = link._nextTarget;
+  if (link._nextTarget) link._nextTarget._previousTarget = link._previousTarget;
 
-  link.pt = null;
-  link.nt = null;
+  link._previousTarget = null;
+  link._nextTarget = null;
 
   if (deactivateImmediately) deactivate(store);
   else storesToDeactivate.push(store);
@@ -115,9 +121,9 @@ function deactivate(store: Store<any>) {
   for (
     let link: Link | null = store._firstSource;
     link !== null;
-    link = link.ns
+    link = link._nextSource
   ) {
-    removeTarget(link.source!, link, true);
+    removeTarget(link._source!, link, true);
   }
 
   try {
@@ -156,31 +162,31 @@ export interface Store<T> {
   get(): T;
   listen(subscriber: Subscriber<T>): () => void;
   subscribe(subscriber: Subscriber<T>, immediate?: boolean): () => void;
-  /** @internal */
+  /** @internal value */
   _value: T;
-  /** @internal */
+  /** @internal updated */
   _updated: number;
-  /** @internal */
+  /** @internal notified */
   _notified: number;
-  /** @internal */
+  /** @internal version */
   _version: number;
-  /** @internal */
+  /** @internal firstSource */
   _firstSource: Link | null;
-  /** @internal */
+  /** @internal lastTarget */
   _lastTarget: Link | null;
-  /** @internal */
+  /** @internal equal */
   _equal: ((value: T, prevValue?: T) => unknown) | false;
-  /** @internal */
+  /** @internal cursor */
   _cursor: Link | null;
-  /** @internal */
+  /** @internal computing */
   _computing: Store<any> | null;
-  /** @internal */
+  /** @internal level */
   _level: number;
-  /** @internal */
+  /** @internal exception */
   _exception?: unknown;
-  /** @internal */
+  /** @internal children */
   _children?: (Store<any> | (() => void))[];
-  /** @internal */
+  /** @internal hooks */
   _hooks?: any;
 }
 
@@ -194,7 +200,7 @@ function subscribe<T>(
   const value = this.get();
   const link: Link = createLink(this, subscriber);
 
-  link.cache = value;
+  link._cache = value;
 
   addTarget(this, link);
 
@@ -211,12 +217,12 @@ function subscribe<T>(
   sync();
 
   const dispose = () => {
-    const source = link.source;
+    const source = link._source;
 
     if (source === null) return;
 
-    link.source = null;
-    link.cache = null;
+    link._source = null;
+    link._cache = null;
 
     removeTarget(source, link, true);
   };
@@ -263,19 +269,27 @@ function sync() {
 
     let subs = 0;
 
-    for (let link = store._lastTarget; link !== null; link = link.pt) {
-      const target = link.target;
+    for (
+      let link = store._lastTarget;
+      link !== null;
+      link = link._previousTarget
+    ) {
+      const target = link._target;
 
       if (typeof target === 'function') ++subs;
       else if (target._notified !== globalVersion) stack.push(target);
 
-      if (link.pt === null) {
-        for (let l = link as Link | null; subs > 0 && l !== null; l = l!.nt) {
-          if (typeof l.target === 'function') {
+      if (link._previousTarget === null) {
+        for (
+          let l = link as Link | null;
+          subs > 0 && l !== null;
+          l = l!._nextTarget
+        ) {
+          if (typeof l._target === 'function') {
             linksToSubscribers.push(l);
             --subs;
 
-            const nextLevel = l.source!._level;
+            const nextLevel = l._source!._level;
 
             sortSubscribers ||= level >= 0 && level !== nextLevel;
             level = nextLevel;
@@ -286,25 +300,25 @@ function sync() {
   }
 
   if (sortSubscribers)
-    linksToSubscribers.sort((a, b) => a.source!._level - b.source!._level);
+    linksToSubscribers.sort((a, b) => a._source!._level - b._source!._level);
 
   for (let link of linksToSubscribers) {
-    const store = link.source;
+    const store = link._source;
 
     if (store) store.get();
     else continue;
 
     const updated = store._updated;
-    const lastUpdated = (link.ns as any as number) || 0;
+    const lastUpdated = (link._nextSource as any as number) || 0;
 
     if (updated >= notificationVersion && updated > lastUpdated) {
       try {
-        (link.target as any)(store._value, link.cache);
+        (link._target as any)(store._value, link._cache);
       } catch (e) {
         config.logException?.(e);
       } finally {
-        link.cache = store._value;
-        (link.ns as any) = store._updated;
+        link._cache = store._value;
+        (link._nextSource as any) = store._updated;
       }
     }
   }
@@ -345,6 +359,7 @@ export function batch(fn: () => void) {
 interface Atom<T> extends Store<T> {
   set(value: T): void;
   update(updater?: (value: T) => T | void): void;
+  /** @internal nextValue */
   _nextValue: T;
 }
 
@@ -396,7 +411,7 @@ export function atom(value?: any, options?: any) {
 }
 
 interface Computed<T> extends Store<T> {
-  /** @internal */
+  /** @internal compute */
   _compute: Computation<T>;
 }
 
@@ -409,8 +424,10 @@ function track<T>(store: Store<T>) {
     let cursor = computing._cursor;
 
     if (cursor) {
-      if (cursor.ns === null) cursor.ns = createLink(null, computing);
-      computing._cursor = cursor.ns;
+      if (cursor._nextSource === null) {
+        cursor._nextSource = createLink(null, computing);
+      }
+      computing._cursor = cursor._nextSource;
     } else {
       if (computing._firstSource) {
         computing._cursor = computing._firstSource;
@@ -421,9 +438,9 @@ function track<T>(store: Store<T>) {
     }
 
     cursor = computing._cursor;
-    const source = cursor.source;
+    const source = cursor._source;
 
-    cursor.cache = store._computing;
+    cursor._cache = store._computing;
     store._computing = computing;
 
     if (source !== store) {
@@ -431,7 +448,7 @@ function track<T>(store: Store<T>) {
         if (source) removeTarget(source, cursor);
         shouldAddTarget = true;
       }
-      cursor.source = store;
+      cursor._source = store;
     }
   }
 
@@ -470,9 +487,9 @@ function getComputedValue<T>(this: Computed<T>) {
         for (
           let link: Link | null = this._firstSource;
           link !== null;
-          link = link.ns
+          link = link._nextSource
         ) {
-          const source = link!.source!;
+          const source = link!._source!;
 
           if (source._updated <= version) source.get();
 
@@ -510,22 +527,22 @@ function getComputedValue<T>(this: Computed<T>) {
       }
 
       if (this._cursor) {
-        const next = this._cursor.ns;
+        const next = this._cursor._nextSource;
 
         for (
           let link: Link | null = this._firstSource;
           link !== next;
-          link = link!.ns
+          link = link!._nextSource
         ) {
-          link!.source!._computing = link!.cache;
-          link!.cache = null;
+          link!._source!._computing = link!._cache;
+          link!._cache = null;
         }
 
         if (next) {
-          this._cursor.ns = null;
+          this._cursor._nextSource = null;
 
-          for (let link: Link | null = next; link !== null; link = link.ns) {
-            removeTarget(link.source!, link);
+          for (let link: Link | null = next; link !== null; link = link._nextSource) {
+            removeTarget(link._source!, link);
           }
         }
       }

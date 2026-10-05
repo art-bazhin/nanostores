@@ -5,26 +5,37 @@ import {
 import type { Store, Subscriber } from '../core/index.js';
 
 type Hook = (...args: any[]) => void;
-type Hooks = Record<number, Hook | Hook[] | undefined>;
+interface Hooks {
+  /** Activation runner */
+  _onActivate?: Hook;
+  /** Deactivation runner */
+  _onDeactivate?: Hook;
+  /** Update runner */
+  _onUpdate?: Hook;
+  /** Activation listeners */
+  _activateListeners?: Hook[];
+  /** Deactivation listeners */
+  _deactivateListeners?: Hook[];
+}
 
 function runActivateListeners(this: Hooks, ...args: any[]) {
-  const listeners = this[ON_ACTIVATE_KEY + 100] as Hook[];
+  const listeners = this._activateListeners as Hook[];
   for (let i = 0; i < listeners.length; i++) listeners[i]!(...args);
 }
 
 function runDeactivateListeners(this: Hooks, ...args: any[]) {
-  const listeners = this[ON_DEACTIVATE_KEY + 100] as Hook[];
+  const listeners = this._deactivateListeners as Hook[];
   for (let i = 0; i < listeners.length; i++) listeners[i]!(...args);
 }
 
 function addHook(
   store: Store<any>,
-  key: number,
+  key: typeof ON_ACTIVATE_KEY | typeof ON_DEACTIVATE_KEY,
+  listenersKey: '_activateListeners' | '_deactivateListeners',
   listener: Hook,
   runner: Hook
 ) {
   const hooks = (store._hooks ||= {}) as Hooks;
-  const listenersKey = key + 100;
   let listeners = hooks[listenersKey] as Hook[] | undefined;
 
   if (listeners) {
@@ -60,6 +71,7 @@ export function onActivate<T>(store: Store<T>, handler: ActivateHandler<T>) {
   const removeActivate = addHook(
     store,
     ON_ACTIVATE_KEY,
+    /* @__KEY__ */ '_activateListeners',
     (value: T) => {
       const cleanup = handler(value);
       deactivate = typeof cleanup === 'function' ? cleanup : undefined;
@@ -69,6 +81,7 @@ export function onActivate<T>(store: Store<T>, handler: ActivateHandler<T>) {
   const removeDeactivate = addHook(
     store,
     ON_DEACTIVATE_KEY,
+    /* @__KEY__ */ '_deactivateListeners',
     (value: T) => {
       const current = deactivate;
       deactivate = undefined;
