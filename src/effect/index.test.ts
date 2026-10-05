@@ -1,7 +1,7 @@
 import { describe, it, mock } from 'node:test';
 
 import { expect } from '../../test/expect.ts';
-import { atom, batch, configure } from '../core/index.ts';
+import { atom, batch } from '../core/index.ts';
 import { effect } from './index.ts';
 
 describe('effect', () => {
@@ -46,7 +46,7 @@ describe('effect', () => {
     const error = new Error('boom');
     const errors: unknown[] = [];
 
-    configure({ logException: (caught) => errors.push(caught) });
+    const errorSpy = mock.method(console, 'error', (caught) => errors.push(caught));
     try {
       const stop = effect((get) => {
         if (get(counter) > 0) throw error;
@@ -57,7 +57,7 @@ describe('effect', () => {
       expect(errors).toEqual([error]);
       stop();
     } finally {
-      configure();
+      errorSpy.mock.restore();
     }
   });
 

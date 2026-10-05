@@ -22,31 +22,6 @@ let triggeredWritables: Atom<any>[] = [];
 let linksToSubscribers: Link[] = [];
 let storesToDeactivate: Store<any>[] = [];
 
-/**
- * A library configuration object.
- */
-export interface Config {
-  /**
-   * A function that logs exceptions. Default is console.error.
-   * @param e An exception to log.
-   */
-  logException: (e: unknown) => void;
-}
-
-const DEFAULT_CONFIG: any = {
-  logException: /* istanbul ignore next */ (e: unknown) => console.error(e),
-};
-
-export const config = Object.assign({}, DEFAULT_CONFIG);
-
-/**
- * Configurate the library. Call without arguments to use the default configuration.
- * @param configUpdate A configuration object.
- */
-export function configure(configUpdate?: Partial<Config>) {
-  Object.assign(config, configUpdate || DEFAULT_CONFIG);
-}
-
 interface Link {
   /** Source store */
   _source: Store<any> | null;
@@ -130,7 +105,7 @@ function deactivate(store: Store<any>) {
     // store.onCleanup?.(store._value);
     store._hooks?.[ON_DEACTIVATE_KEY]?.(store._value);
   } catch (e) {
-    config.logException?.(e);
+    console.error(e);
   }
 }
 
@@ -208,7 +183,7 @@ function subscribe<T>(
     try {
       subscriber(value);
     } catch (e) {
-      config.logException?.(e);
+      console.error(e);
     }
   }
 
@@ -315,7 +290,7 @@ function sync() {
       try {
         (link._target as any)(store._value, link._cache);
       } catch (e) {
-        config.logException?.(e);
+        console.error(e);
       } finally {
         link._cache = store._value;
         (link._nextSource as any) = store._updated;
@@ -560,7 +535,7 @@ function getComputedValue<T>(this: Computed<T>) {
 
   if (this._version === HAS_EXCEPTION) {
     if (computing || checkLevel) throw this._exception;
-    else config.logException?.(this._exception);
+    else console.error(this._exception);
 
     // this.onException?.(this._exception, this._value);
   }

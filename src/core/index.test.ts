@@ -1,7 +1,9 @@
-import { beforeEach, describe, it, mock } from 'node:test'
+import { afterEach, beforeEach, describe, it, mock } from 'node:test'
 
 import { expect } from '../../test/expect.ts'
-import { atom, batch, computed, configure } from './index.ts'
+import { atom, batch, computed } from './index.ts'
+
+afterEach(() => mock.restoreAll());
 
 describe('atom', () => {
   const counter = atom(0);
@@ -462,9 +464,7 @@ describe('computed', () => {
   it('logs unhandled exceptions in nested computeds', () => {
     const spy = mock.fn();
 
-    configure({
-      logException: spy,
-    });
+    mock.method(console, 'error', spy);
 
     const obj = null as any;
 
@@ -481,9 +481,7 @@ describe('computed', () => {
   it('logs unhandled exceptions while computing inactive atom', () => {
     const spy = mock.fn();
 
-    configure({
-      logException: spy,
-    });
+    mock.method(console, 'error', spy);
 
     const a = atom(0);
 
@@ -512,7 +510,7 @@ describe('computed', () => {
     const errSpy = mock.fn();
     const subSpy = mock.fn();
 
-    configure({ logException: errSpy });
+    mock.method(console, 'error', errSpy);
 
     const a = atom(0);
 
@@ -1048,9 +1046,7 @@ describe('computed', () => {
   it('allows to handle active atom exceptions', () => {
     const errorSpy = mock.fn();
 
-    configure({
-      logException: errorSpy,
-    });
+    mock.method(console, 'error', errorSpy);
 
     const count = atom(0);
 
@@ -1114,9 +1110,7 @@ describe('computed', () => {
 
 describe('store', () => {
   beforeEach(() => {
-    configure({
-      logException: () => {},
-    });
+    mock.method(console, 'error', () => {});
   });
 
   const counter = atom(0);
@@ -2009,9 +2003,7 @@ describe('store', () => {
   it('notifies subscribers when computed recovers from an error with undefined', () => {
     const spy = mock.fn();
 
-    configure({
-      logException: spy,
-    });
+    mock.method(console, 'error', spy);
 
     const source = atom(0);
     const listener = mock.fn();
@@ -2169,13 +2161,12 @@ describe('store', () => {
   });
 
   it('logs subscriber errors without failing a batch', () => {
-    const logException = mock.fn();
+    const errorSpy = mock.method(console, 'error', () => {});
     const error = new Error('boom');
     const a = atom(0);
     const b = atom(0);
     const values: number[] = [];
 
-    configure({ logException });
     try {
       a.listen(() => {
         throw error;
@@ -2187,14 +2178,14 @@ describe('store', () => {
         b.set(1);
       });
 
-      expect(logException).toHaveBeenCalledTimes(1);
-      expect(logException.mock.calls[0]!.arguments[0]).toBe(error);
+      expect(errorSpy).toHaveBeenCalledTimes(1);
+      expect(errorSpy.mock.calls[0]!.arguments[0]).toBe(error);
       expect(values).toEqual([1]);
 
       b.set(2);
       expect(values).toEqual([1, 2]);
     } finally {
-      configure();
+      errorSpy.mock.restore();
     }
   });
 
@@ -2393,9 +2384,7 @@ describe('store', () => {
   it('catches and logs exceptions in subscribers', () => {
     const spy = mock.fn();
 
-    configure({
-      logException: spy,
-    });
+    mock.method(console, 'error', spy);
 
     const a = atom(0);
     const sub = () => {
@@ -2408,7 +2397,6 @@ describe('store', () => {
     a.set(1);
     expect(spy).toHaveBeenCalledTimes(2);
 
-    configure();
   });
 
   // describe('atom options', () => {
